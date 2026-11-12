@@ -1,5 +1,9 @@
 
 import unittest
+import json
+from threading import Thread
+from urllib.request import urlopen
+from http.server import HTTPServer
 
 from app.missions import (
     MISSIONS,
@@ -9,7 +13,71 @@ from app.missions import (
     create_mission,
     delete_mission
 )
+from app.server import MissionHandler
 from tools.mission_tools import list_active_missions
+
+
+class MissionHTTPTests(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+
+        cls.server = HTTPServer(("127.0.0.1", 0), MissionHandler)
+        cls.server_thread = Thread(
+            target=cls.server.serve_forever,
+            daemon=True
+        )
+        cls.server_thread.start()
+        cls.base_url = f"http://127.0.0.1:{cls.server.server_port}"
+
+    @classmethod
+    def tearDownClass(cls):
+
+        cls.server.shutdown()
+        cls.server.server_close()
+        cls.server_thread.join()
+
+    def test_get_active_missions_returns_json(self):
+
+        with urlopen(f"{self.base_url}/missions/active") as response:
+            data = json.loads(response.read())
+
+        self.assertEqual(response.status, 200)
+        self.assertEqual(
+            data,
+            [MISSIONS[0], MISSIONS[2]]
+        )
+
+    def test_get_active_missions_returns_empty_json_array(self):
+
+        original_statuses = [mission["status"] for mission in MISSIONS]
+
+        try:
+            for mission in MISSIONS:
+                mission["status"] = "pending"
+
+            with urlopen(f"{self.base_url}/missions/active") as response:
+                data = json.loads(response.read())
+
+            self.assertEqual(response.status, 200)
+            self.assertEqual(data, [])
+        finally:
+            for mission, status in zip(MISSIONS, original_statuses):
+                mission["status"] = status
+
+    def test_existing_get_routes_are_unchanged(self):
+
+        with urlopen(f"{self.base_url}/missions") as response:
+            missions = json.loads(response.read())
+
+        self.assertEqual(response.status, 200)
+        self.assertEqual(missions, MISSIONS)
+
+        with urlopen(f"{self.base_url}/missions/1") as response:
+            mission = json.loads(response.read())
+
+        self.assertEqual(response.status, 200)
+        self.assertEqual(mission, MISSIONS[0])
 
 
 class MissionTests(unittest.TestCase):

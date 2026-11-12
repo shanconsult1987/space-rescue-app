@@ -59,6 +59,7 @@ Defined in [app/missions.py](app/missions.py):
 | Method | Endpoint | Success response |
 | --- | --- | --- |
 | `GET` | `/missions` | `200` with the mission array. |
+| `GET` | `/missions/active` | `200` with the array of active missions (empty if none are active). |
 | `GET` | `/missions/{id}` | `200` with a mission object. |
 | `POST` | `/missions` | `201` with the created mission. |
 | `DELETE` | `/missions/{id}` | `200` with `{"message": "Mission deleted"}`. |
@@ -103,9 +104,11 @@ The tests cover:
 - Rejecting unsupported, incorrectly cased, whitespace-padded, and non-string priorities.
 - Ensuring rejected creation attempts leave the mission list unchanged.
 - Deleting existing and missing missions.
+- Exercising HTTP GET handlers for `/missions`, `/missions/active`, and `/missions/{id}`, including JSON responses and `200` status codes.
 
-Each test restores the original mission list afterward. The existing suite does
-not test the HTTP handlers, request parsing, or response status codes.
+Each test restores the original mission list afterward. HTTP handler coverage is
+limited to these GET routes; request parsing and other HTTP methods/status codes
+are not covered.
 
 ## License
 
