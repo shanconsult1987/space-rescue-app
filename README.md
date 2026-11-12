@@ -110,6 +110,28 @@ Each test restores the original mission list afterward. HTTP handler coverage is
 limited to these GET routes; request parsing and other HTTP methods/status codes
 are not covered.
 
+## CI evaluation
+
+After unit tests, [CI](.github/workflows/ci.yml) runs:
+
+```powershell
+python -m evaluation.run_evaluation
+```
+
+The evaluator starts the real HTTP handler on an ephemeral loopback port and
+sends GET requests without modifying mission data. It requires HTTP 200,
+JSON content, and an array of mission objects. Active and high-priority results
+must exactly match the corresponding filtered `/missions` baseline, including
+completeness. The third case executes the unit test suite again and checks its
+exit status. Evaluation does not inspect source text to infer endpoint support.
+
+The command prints a JSON report, writes `evaluation/results.json`, and exits
+nonzero if any case or the unit suite fails. CI uploads the report as the
+`evaluation-results` artifact even when evaluation fails.
+The current `/missions/high-priority` case fails because that route is not
+implemented; evaluation intentionally exposes that missing functionality.
+It does not add or change API routes.
+
 ## GitHub agent orchestration
 
 [Planner Developer Reviewer](.github/workflows/agent-orchestration.yml) runs the

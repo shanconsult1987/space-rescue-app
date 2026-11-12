@@ -1,0 +1,19 @@
+[
+  {
+    "id": "EVAL-001",
+    "description": "Active missions endpoint exists",
+    "required_endpoint": "/missions/active",
+    "filter": {"status": "active"}
+  },
+  {
+    "id": "EVAL-002",
+    "description": "High priority endpoint exists",
+    "required_endpoint": "/missions/high-priority",
+    "filter": {"priority": "high"}
+  },
+  {
+    "id": "EVAL-003",
+    "description": "Unit tests execute successfully",
+    "required_endpoint": null
+  }
+]
