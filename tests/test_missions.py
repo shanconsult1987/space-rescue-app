@@ -9,6 +9,7 @@ from app.missions import (
     MISSIONS,
     get_missions,
     get_active_missions,
+    get_high_priority_missions,
     get_mission,
     create_mission,
     delete_mission
@@ -64,6 +65,14 @@ class MissionHTTPTests(unittest.TestCase):
         finally:
             for mission, status in zip(MISSIONS, original_statuses):
                 mission["status"] = status
+
+    def test_get_high_priority_missions_returns_json(self):
+
+        with urlopen(f"{self.base_url}/missions/high-priority") as response:
+            data = json.loads(response.read())
+
+        self.assertEqual(response.status, 200)
+        self.assertEqual(data, [MISSIONS[0]])
 
     def test_existing_get_routes_are_unchanged(self):
 
@@ -128,6 +137,26 @@ class MissionTests(unittest.TestCase):
         MISSIONS.clear()
 
         self.assertEqual(get_active_missions(), [])
+
+    def test_get_high_priority_missions(self):
+
+        self.assertEqual(
+            get_high_priority_missions(),
+            [MISSIONS[0]]
+        )
+
+    def test_get_high_priority_missions_with_no_matches(self):
+
+        for mission in MISSIONS:
+            mission["priority"] = "medium"
+
+        self.assertEqual(get_high_priority_missions(), [])
+
+    def test_get_high_priority_missions_with_empty_list(self):
+
+        MISSIONS.clear()
+
+        self.assertEqual(get_high_priority_missions(), [])
 
     def test_get_missing_mission(self):
 

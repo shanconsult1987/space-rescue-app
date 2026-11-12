@@ -36,6 +36,14 @@ def get_active_missions():
     ]
 
 
+def get_high_priority_missions():
+    return [
+        mission
+        for mission in MISSIONS
+        if mission["priority"] == "high"
+    ]
+
+
 def get_mission(mission_id):
 
     return next(
