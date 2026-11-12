@@ -7,6 +7,7 @@ from urllib.parse import urlparse
 from app.missions import (
     get_missions,
     get_active_missions,
+    get_high_priority_missions,
     get_mission,
     create_mission,
     delete_mission
@@ -51,6 +52,13 @@ class MissionHandler(BaseHTTPRequestHandler):
             return self.send_json(
                 200,
                 get_active_missions()
+            )
+
+        if path == "/missions/high-priority":
+
+            return self.send_json(
+                200,
+                get_high_priority_missions()
             )
 
         if path.startswith("/missions/"):

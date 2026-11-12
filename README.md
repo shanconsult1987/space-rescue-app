@@ -47,6 +47,7 @@ Defined in [app/missions.py](app/missions.py):
 | --- | --- |
 | `get_missions()` | Returns the mission list. |
 | `get_active_missions()` | Returns a list of missions whose status is `active`, or an empty list if none match. |
+| `get_high_priority_missions()` | Returns a list of missions whose priority is `high`, or an empty list if none match. |
 | `get_mission(mission_id)` | Returns a matching mission, or `None`. |
 | `create_mission(name, description, priority="medium")` | Validates the name and priority, appends a pending mission, and returns it. Raises `ValueError` for invalid input. |
 | `delete_mission(mission_id)` | Removes a matching mission; returns `True` on success or `False` if absent. |
@@ -60,6 +61,7 @@ Defined in [app/missions.py](app/missions.py):
 | --- | --- | --- |
 | `GET` | `/missions` | `200` with the mission array. |
 | `GET` | `/missions/active` | `200` with the array of active missions (empty if none are active). |
+| `GET` | `/missions/high-priority` | `200` with the array of high-priority missions (empty if none are high priority). |
 | `GET` | `/missions/{id}` | `200` with a mission object. |
 | `POST` | `/missions` | `201` with the created mission. |
 | `DELETE` | `/missions/{id}` | `200` with `{"message": "Mission deleted"}`. |
@@ -98,13 +100,14 @@ The tests cover:
 
 - Listing the three initial missions.
 - Filtering active missions, including through the tools wrapper, with no-match and empty-list cases.
+- Filtering high-priority missions with normal-match, no-match, and empty-list cases.
 - Retrieving existing and missing missions.
 - Creating a mission with `pending` status.
 - Rejecting empty, whitespace-only, and non-string names.
 - Rejecting unsupported, incorrectly cased, whitespace-padded, and non-string priorities.
 - Ensuring rejected creation attempts leave the mission list unchanged.
 - Deleting existing and missing missions.
-- Exercising HTTP GET handlers for `/missions`, `/missions/active`, and `/missions/{id}`, including JSON responses and `200` status codes.
+- Exercising HTTP GET handlers for `/missions`, `/missions/active`, `/missions/high-priority`, and `/missions/{id}`, including JSON responses and `200` status codes.
 
 Each test restores the original mission list afterward. HTTP handler coverage is
 limited to these GET routes; request parsing and other HTTP methods/status codes
@@ -128,9 +131,9 @@ exit status. Evaluation does not inspect source text to infer endpoint support.
 The command prints a JSON report, writes `evaluation/results.json`, and exits
 nonzero if any case or the unit suite fails. CI uploads the report as the
 `evaluation-results` artifact even when evaluation fails.
-The current `/missions/high-priority` case fails because that route is not
-implemented; evaluation intentionally exposes that missing functionality.
-It does not add or change API routes.
+The `/missions/high-priority` route returns the missions whose priority is
+`high`. Evaluation checks the response against the `/missions` baseline and
+does not add or change API routes.
 
 ## GitHub agent orchestration
 
