@@ -4,10 +4,12 @@ import unittest
 from app.missions import (
     MISSIONS,
     get_missions,
+    get_active_missions,
     get_mission,
     create_mission,
     delete_mission
 )
+from tools.mission_tools import list_active_missions
 
 
 class MissionTests(unittest.TestCase):
@@ -37,6 +39,27 @@ class MissionTests(unittest.TestCase):
             get_mission(1)["name"],
             "Mars Alpha"
         )
+
+    def test_get_active_missions(self):
+
+        expected = [MISSIONS[0], MISSIONS[2]]
+
+        self.assertEqual(get_active_missions(), expected)
+        self.assertEqual(list_active_missions(), expected)
+        self.assertEqual(MISSIONS, self.original)
+
+    def test_get_active_missions_with_no_matches(self):
+
+        for mission in MISSIONS:
+            mission["status"] = "pending"
+
+        self.assertEqual(get_active_missions(), [])
+
+    def test_get_active_missions_with_empty_list(self):
+
+        MISSIONS.clear()
+
+        self.assertEqual(get_active_missions(), [])
 
     def test_get_missing_mission(self):
 

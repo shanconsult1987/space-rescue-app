@@ -46,6 +46,7 @@ Defined in [app/missions.py](app/missions.py):
 | Function | Behavior |
 | --- | --- |
 | `get_missions()` | Returns the mission list. |
+| `get_active_missions()` | Returns a list of missions whose status is `active`, or an empty list if none match. |
 | `get_mission(mission_id)` | Returns a matching mission, or `None`. |
 | `create_mission(name, description, priority="medium")` | Validates the name and priority, appends a pending mission, and returns it. Raises `ValueError` for invalid input. |
 | `delete_mission(mission_id)` | Removes a matching mission; returns `True` on success or `False` if absent. |
@@ -85,7 +86,7 @@ or mission-update endpoints.
 
 ## Unit tests
 
-The eight tests in [tests/test_missions.py](tests/test_missions.py) use Python's
+The tests in [tests/test_missions.py](tests/test_missions.py) use Python's
 built-in `unittest` framework. Run them from the project root:
 
 ```powershell
@@ -95,6 +96,7 @@ python -m unittest discover -s tests -v
 The tests cover:
 
 - Listing the three initial missions.
+- Filtering active missions, including through the tools wrapper, with no-match and empty-list cases.
 - Retrieving existing and missing missions.
 - Creating a mission with `pending` status.
 - Rejecting empty, whitespace-only, and non-string names.

@@ -28,6 +28,14 @@ def get_missions():
     return MISSIONS
 
 
+def get_active_missions():
+    return [
+        mission
+        for mission in MISSIONS
+        if mission["status"] == "active"
+    ]
+
+
 def get_mission(mission_id):
 
     return next(
