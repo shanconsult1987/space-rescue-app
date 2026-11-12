@@ -1,0 +1,209 @@
+name: Planner Developer Reviewer
+run-name: Agents issue ${{ github.event.issue.number }} - ${{ github.event.label.name }}
+
+on:
+  issues:
+    types: [labeled]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agent-orchestration-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+env:
+  ISSUE_NUMBER: ${{ github.event.issue.number }}
+  GH_REPO: ${{ github.repository }}
+  REPORTS: ${{ github.workspace }}/../agent-reports
+
+jobs:
+  plan:
+    if: github.event.label.name == 'agent-approved' && github.event.issue.state == 'open'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Validate authorization and capture issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ACTOR: ${{ github.actor }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          permission=$(gh api "repos/$GH_REPO/collaborators/$ACTOR/permission" --jq .permission)
+          case "$permission" in
+            admin|maintain|write) ;;
+            *) echo "::error::Only repository writers may start agent automation"; exit 1 ;;
+          esac
+          mkdir -p "$REPORTS"
+          gh issue view "$ISSUE_NUMBER" --json number,title,body,state,labels > "$REPORTS/issue.json"
+          jq -e '.state == "OPEN" and any(.labels[]; .name == "agent-approved")' "$REPORTS/issue.json"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install Copilot CLI
+        run: npm install --global @github/copilot
+      - name: Run Planner
+        env:
+          COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          test -n "$COPILOT_GITHUB_TOKEN" || { echo "::error::Missing COPILOT_GITHUB_TOKEN secret"; exit 1; }
+          python -m tools.agent_orchestration plan --directory "$REPORTS"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: approved-plan
+          path: ${{ env.REPORTS }}
+          if-no-files-found: error
+          retention-days: 7
+      - name: Publish plan for human approval
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          cat "$REPORTS/plan.md" >> "$GITHUB_STEP_SUMMARY"
+          {
+            printf '## Agent implementation plan\n\n'
+            printf 'Review this plan, wait for [this run](%s/%s/actions/runs/%s) to succeed, then add the **plan-approved** label to continue.\n\n' \
+              "$GITHUB_SERVER_URL" "$GH_REPO" "$GITHUB_RUN_ID"
+            cat "$REPORTS/plan.md"
+            printf '\n<!-- spacerescue-plan run=%s -->\n' "$GITHUB_RUN_ID"
+          } > "$RUNNER_TEMP/plan-comment.md"
+          gh issue comment "$ISSUE_NUMBER" --body-file "$RUNNER_TEMP/plan-comment.md"
+
+  resolve-plan:
+    if: github.event.label.name == 'plan-approved' && github.event.issue.state == 'open'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: read
+      actions: read
+    outputs:
+      run-id: ${{ steps.resolve.outputs.run-id }}
+      source-sha: ${{ steps.resolve.outputs.source-sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Verify human approval and resolve immutable plan
+        id: resolve
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ACTOR: ${{ github.actor }}
+          SENDER_TYPE: ${{ github.event.sender.type }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$SENDER_TYPE" = "User" || { echo "::error::A human must approve the plan"; exit 1; }
+          permission=$(gh api "repos/$GH_REPO/collaborators/$ACTOR/permission" --jq .permission)
+          case "$permission" in
+            admin|maintain|write) ;;
+            *) echo "::error::Only repository writers may approve plans"; exit 1 ;;
+          esac
+          python -m tools.agent_orchestration resolve-plan --directory "$REPORTS"
+
+  develop-review:
+    needs: resolve-plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    permissions:
+      contents: read
+      issues: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve-plan.outputs.source-sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: approved-plan
+          path: ${{ env.REPORTS }}
+          run-id: ${{ needs.resolve-plan.outputs.run-id }}
+          github-token: ${{ github.token }}
+      - name: Ensure approved issue has not changed
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh issue view "$ISSUE_NUMBER" --json number,title,body,state,labels > "$RUNNER_TEMP/current-issue.json"
+          jq -e '.state == "OPEN" and any(.labels[]; .name == "agent-approved") and any(.labels[]; .name == "plan-approved")' "$RUNNER_TEMP/current-issue.json"
+          diff <(jq -S '{number,title,body}' "$REPORTS/issue.json") \
+               <(jq -S '{number,title,body}' "$RUNNER_TEMP/current-issue.json")
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install Copilot CLI
+        run: npm install --global @github/copilot
+      - name: Run Developer, unit tests, then Reviewer
+        env:
+          COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}
+        run: python -m tools.agent_orchestration develop --directory "$REPORTS"
+      - name: Save implementation and review evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: implementation-review
+          path: ${{ env.REPORTS }}
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    needs: [resolve-plan, develop-review]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve-plan.outputs.source-sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: implementation-review
+          path: ${{ env.REPORTS }}
+      - name: Prepare reviewed changes without executing generated code
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m tools.agent_orchestration pr-body --directory "$REPORTS"
+          cp tools/agent_orchestration.py "$RUNNER_TEMP/validate-orchestration.py"
+          git apply --check "$REPORTS/changes.patch"
+          git apply --index "$REPORTS/changes.patch"
+          python "$RUNNER_TEMP/validate-orchestration.py" validate --directory "$REPORTS"
+          git diff --cached --check
+      - name: Create branch and draft PR for human review
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASE_BRANCH: ${{ github.event.repository.default_branch }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          branch="agents/issue-$ISSUE_NUMBER-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          git switch -c "$branch"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git -c core.hooksPath=/dev/null commit \
+            -m "Implement approved issue #$ISSUE_NUMBER" \
+            -m "Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"
+          gh auth setup-git
+          git push origin "$branch"
+          printf '\nWorkflow evidence: %s/%s/actions/runs/%s\n' \
+            "$GITHUB_SERVER_URL" "$GH_REPO" "$GITHUB_RUN_ID" >> "$REPORTS/pr-body.md"
+          gh pr create --draft --base "$BASE_BRANCH" --head "$branch" \
+            --title "Implement approved issue #$ISSUE_NUMBER" --body-file "$REPORTS/pr-body.md"

@@ -107,6 +107,72 @@ The tests cover:
 Each test restores the original mission list afterward. The existing suite does
 not test the HTTP handlers, request parsing, or response status codes.
 
+## GitHub agent orchestration
+
+[Planner Developer Reviewer](.github/workflows/agent-orchestration.yml) runs the
+existing custom agents sequentially with Copilot CLI:
+
+1. A repository writer adds the `agent-approved` label to an open issue.
+2. Planner posts its plan on the issue and saves the exact issue snapshot.
+3. Planning finishes without starting development.
+4. A human repository writer reads the posted plan, waits for the planning run
+   to succeed, then adds `plan-approved`. This starts a separate run using the
+   immutable plan artifact and source commit from the planning run.
+5. Developer implements that plan, then the workflow runs
+   `python -m unittest discover -s tests -v`.
+6. Reviewer independently assesses the code, plan and test evidence. A failed
+   test or `REQUEST_CHANGES` stops publication; inspect the run artifacts.
+7. A separate job publishes the reviewed patch as a **draft pull request** using
+   the repository PR template. A human must review it; nothing merges or deploys.
+
+### One-time repository setup
+
+- Merge these workflow changes through normal human review. Issue-event
+  workflows must exist on the default branch before they can run.
+- Create the `agent-approved` and `plan-approved` issue labels. This two-label
+  approval mechanism works for private repositories without Enterprise
+  environment protection rules. Only human repository writers can approve.
+- Add repository Actions secret `COPILOT_GITHUB_TOKEN`: a fine-grained PAT with
+  the **Copilot Requests** permission and an eligible Copilot subscription.
+  Do not grant this token repository-write permissions.
+- Enable **Allow GitHub Actions to create and approve pull requests** in
+  **Settings > Actions > General**. This workflow creates drafts, not approvals.
+
+From another agent or GitHub CLI, start orchestration by labeling an issue:
+
+```powershell
+gh issue edit 123 --repo shanconsult1987/space-rescue-app --add-label agent-approved
+```
+
+After human review of the posted plan and successful planning run:
+
+```powershell
+gh issue edit 123 --repo shanconsult1987/space-rescue-app --add-label plan-approved
+```
+
+Do not let the initiating agent apply `plan-approved` on the human's behalf.
+Only repository writers may trigger the workflow. Issue text is treated as
+untrusted requirements. Title/body edits, closing the issue, or removing the
+label while approval is pending prevent development from starting. To request
+a fresh plan, remove both labels and re-add `agent-approved` after
+finishing/cancelling the old run. Runs for the same issue are serialized.
+Approval fails explicitly if the plan artifact has expired or planning failed.
+
+Agent jobs do not receive a repository-write token. Publishing runs separately
+and does not execute generated code. Automation rejects changes outside `app/`,
+`tools/`, `tests/`, `docs/`, `README.md` and `requirements.txt`, as well as changes
+to orchestration controls, hidden paths, `AGENTS.md`, symlinks and submodules.
+Changes to workflows or agent definitions require a manual PR.
+Copilot CLI tool permissions are not an OS sandbox; use this only for trusted,
+human-approved work. Agents can read repository content and generated tests run
+on the ephemeral runner. Do not put unrelated secrets in these jobs.
+
+Plans, developer reports, test output and reviewer reports are saved as Actions
+artifacts for seven days. PRs made with `GITHUB_TOKEN` may not trigger subsequent
+CI workflows automatically; a maintainer must explicitly run required CI or use
+an approved GitHub App publishing identity. Existing branch protections still
+apply.
+
 ## License
 
 No license file is currently included in this project. A license has not been
